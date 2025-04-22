@@ -43,7 +43,8 @@ The system is developed for a company specializing in car parts. It addresses th
 3. **Setup Environment Variables**:
    Create a `.env` file with the following:
    ```env
-   MODEL_PATH=path_to_qwen_model
+   TELEGRAM_BOT_TOKEN="YOUR_TG_BOT_TOKEN"
+   DASHSCOPE_API_KEY="YOUR_DASHCOPE_API_KEY"
    ```
 
 4. **Run the Application**:
