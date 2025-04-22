@@ -3,7 +3,8 @@ import logging
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 import os
-
+import mimetypes
+import base64
 load_dotenv()
 
 vin_recognition = """
@@ -56,24 +57,73 @@ class AIManager:
             base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
         )
 
-    async def recognize_vin(self, image_url) -> str:
-        """Пытается распознать VIN. Предполагаемый VIN будет возвращен и далее пройдет валидацию"""
-        completion = await self.client.chat.completions.create(
-            model="qwen-vl-max",
-            messages=[
-                {
-                    "role": "user", "content": [
-                    {"type": "text", "text": vin_recognition},
+    import base64
+    import mimetypes
+    import os
+    from typing import Union
+
+    async def recognize_vin(self, image_source: Union[str, bytes]) -> str:
+        """Пытается распознать VIN. Работает как с URL, так и с локальными файлами.
+
+        Args:
+            image_source: Может быть:
+                - URL изображения в интернете (начинается с http:// или https://)
+                - Путь к локальному файлу
+                - Байты содержимого изображения
+
+        Returns:
+            Предполагаемый VIN
+        """
+        if isinstance(image_source, bytes):
+            # Если переданы байты изображения
+            image_content = image_source
+        elif image_source.startswith(('http://', 'https://')):
+            # Если это URL - используем старый формат
+            completion = await self.client.chat.completions.create(
+                model="qwen-vl-max",
+                messages=[
                     {
-                        "type": "image_url",
-                        "image_url": {"url": image_url}
-                    }
-                ],
-                }]
-        )
+                        "role": "user", "content": [
+                        {"type": "text", "text": vin_recognition},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image_source}
+                        }
+                    ],
+                    }]
+            )
+        else:
+            # Локальный файл - читаем и кодируем в base64
+            if not os.path.exists(image_source):
+                raise FileNotFoundError(f"Файл не найден: {image_source}")
+
+            # Определяем MIME тип
+            mime_type, _ = mimetypes.guess_type(image_source)
+            if mime_type is None:
+                mime_type = 'application/octet-stream'
+
+            with open(image_source, 'rb') as image_file:
+                image_content = image_file.read()
+
+            base64_image = base64.b64encode(image_content).decode('utf-8')
+            data_url = f"data:{mime_type};base64,{base64_image}"
+
+            completion = await self.client.chat.completions.create(
+                model="qwen-vl-max",
+                messages=[
+                    {
+                        "role": "user", "content": [
+                        {"type": "text", "text": vin_recognition},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": data_url}
+                        }
+                    ],
+                    }]
+            )
+
         supposed_vin = completion.model_dump()['choices'][0]['message'].get('content')
         logging.info(f'Распознанный vin: {supposed_vin}')
 
         return supposed_vin
-
 ai = AIManager(os.getenv('DASHSCOPE_API_KEY'))
